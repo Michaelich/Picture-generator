@@ -12,3 +12,9 @@ def objective_function(img1, img2):
     im_2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
     return mse(im_1, im_2)
 
+def read_image(str):
+    image1 = cv2.imread(str)
+    image1 = cv2.cvtColor(np.float32(image1), cv2.COLOR_BGR2GRAY)
+    return image1
+
+#imageArray=read_image(source)
