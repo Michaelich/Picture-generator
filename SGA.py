@@ -3,50 +3,52 @@ import matplotlib.pyplot as plt
 import time
 import numpy as np
 import cv2
-import objectiveFunctions
 
 def objective_function(p):
-    P = p.reshape((15,15,3))
+    P = create_picture(p, 125, 186)
     PR = cv2.cvtColor(np.float32(P), cv2.COLOR_BGR2GRAY)
     return mse(PR, image1)
 
-def OX(ind1, ind2):
-    l=len(ind1)
-    T=np.random.choice(ind1,2)
-    a,b=T.min(),T.max()
-    Child=ind1.copy()
-    Child2=ind2.copy()
-    Child2[a:b+1]=ind1[a:b+1]
-    Child[a:b+1]=ind2[a:b+1]
-    index1=0
-    for i in range(l):
-      if ind2[i] in Child2[a:b+1]:
-        continue
-      if index1==a:
-        index1=b+1
-      Child2[index1]=ind2[i]
-      index1+=1
-      if index1==l:
-        break
+import cv2
+import numpy as np
+from pandas.core.tools.datetimes import Scalar
 
-    index2=0
-    for i in range(l):
-      if ind1[i] in Child[a:b+1]:
-        continue
-      #print(index1, i)
-      if index2==a:
-        index2=b+1
-      Child[index2]=ind1[i]
-      index2+=1
-      if index2==l:
-        break
+
+def create_picture(chromosome, width, height):
+    '''
+    :param chromosome: made of circle
+    :param circle: [x, y, radius, r, g, b]
+    :param width: of picture
+    :param height: of picture
+    :return:
+    '''
+    picture = np.ones((height, width, 3), np.uint8)*255 # White background
+
+    for cirlce in chromosome:
+        cv2.circle(picture, (cirlce[0], cirlce[1]), cirlce[2], (int(cirlce[3]), int(cirlce[4]), int(cirlce[5])), -1)
+
+    return picture
+
+def Crossover(ind1, ind2):
+    y1,x1 = np.random.randint(ind1.shape)
+    y2,x2= np.random.randint(ind1.shape)
+    xmin=min(x1,x2)
+    xmax=max(x1,x2)
+    ymin=min(y1,y2)
+    ymax=max(y1,y2)
+    Child2=ind1.copy()
+    Child=ind2.copy()
+    Child2[ymin:ymax, xmin:xmax] = ind2[ymin:ymax,xmin:xmax]
+    Child[ymin:ymax, xmin:xmax] = ind1[ymin:ymax,xmin:xmax]
     return Child, Child2
 
 def random_transposition_mutation(p):
     a = np.random.choice(len(p), 2, False)
     i, j = a.min(), a.max()
     q = p.copy()
-    q[i],q[j] = q[j],q[i]
+    temp = q[i].copy()
+    q[i] = q[j]
+    q[j] = temp
     return q
 
 def mse(img1, img2):
@@ -56,8 +58,8 @@ def mse(img1, img2):
     return err/(float(height*width))
 
 #insert image source
-image1 = cv2.imread("SRC")
-print(image1)
+image1 = cv2.imread("mona_lisa.png")
+#print(image1)
 image1 = cv2.cvtColor(np.float32(image1), cv2.COLOR_BGR2GRAY)
 
 def SGA(population_size,chromosome_length,number_of_offspring, crossover_probability, mutation_probability, number_of_iterations):
@@ -65,13 +67,11 @@ def SGA(population_size,chromosome_length,number_of_offspring, crossover_probabi
   SGA_costs = np.zeros(number_of_iterations)
 
   best_objective_value =  np.Inf
-  best_chromosome = np.zeros((1, chromosome_length))
-
+  best_chromosome = np.zeros((chromosome_length, 6))
   # generating an initial population
-  current_population = np.zeros((population_size, chromosome_length), dtype=np.int64)
+  current_population = np.zeros([population_size, chromosome_length, 6], dtype=int)
   for i in range(population_size):
-      current_population[i, :] = np.random.randint(0,250,chromosome_length)
-
+      current_population[i, :, :] = np.random.randint([0,0,0,0,0,0],[100,200,40,255,255,255], size=(chromosome_length,6))
   # evaluating the objective function on the current population
   objective_values = np.zeros(population_size)
   for i in range(population_size):
@@ -88,12 +88,12 @@ def SGA(population_size,chromosome_length,number_of_offspring, crossover_probabi
       parent_indices = np.random.choice(population_size, number_of_offspring, True, fitness_values).astype(np.int64)
 
       # creating the children population
-      children_population = np.zeros((number_of_offspring, chromosome_length), dtype=np.int64)
+      children_population = np.zeros([population_size, chromosome_length, 6], dtype=int)
       for i in range(int(number_of_offspring/2)):
           if np.random.random() < crossover_probability:
-              children_population[2*i, :], children_population[2*i+1, :] = OX(current_population[parent_indices[2*i], :].copy(), current_population[parent_indices[2*i+1], :].copy())
+              children_population[2*i, :, :], children_population[2*i+1, :, :] = Crossover(current_population[parent_indices[2*i], :, :].copy(), current_population[parent_indices[2*i+1], : , :].copy())
           else:
-              children_population[2*i, :], children_population[2*i+1, :] = current_population[parent_indices[2*i], :].copy(), current_population[parent_indices[2*i+1]].copy()
+              children_population[2*i, :, :], children_population[2*i+1, :, :] = current_population[parent_indices[2*i], :, :].copy(), current_population[parent_indices[2*i+1]].copy()
       if np.mod(number_of_offspring, 2) == 1:
           children_population[-1, :] = current_population[parent_indices[-1], :]
 
@@ -124,9 +124,16 @@ def SGA(population_size,chromosome_length,number_of_offspring, crossover_probabi
   return SGA_costs, best_chromosome
 
 
+number_of_circles = 75
+number_of_iterations = 1000
+number_of_population = 1000
+number_of_offspring = 1000
+SA_costs, best_chromo = SGA(number_of_population, number_of_circles, number_of_offspring, 0.95, 0.05, number_of_iterations)
+print(SA_costs)
+cv2.imshow('Picture',create_picture(best_chromo, 125, 186))
 
-chromosome_len=3*15*15 #rgb*width*height
-SA_costs, best_chromo = SGA(750, chromosome_len, 750, 0.95, 0.05, 1500)
-img = best_chromo.reshape((15,15,3))
-print(img)
-cv2.imwrite('result.jpg', img)
+cv2.waitKey(0)
+
+plt.figure(figsize=(12,8))
+plt.plot(SA_costs)
+plt.show()
