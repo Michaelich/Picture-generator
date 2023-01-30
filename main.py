@@ -86,9 +86,9 @@ def Crossover(ind1, ind2):
 if __name__ == '__main__':
     set_start_method('spawn')
     with Pool() as p:
-        population_size = 100
+        population_size = 10
         chromosome_length = 350
-        number_of_offspring = 100
+        number_of_offspring = 200
         crossover_probability = 0.05
         mutation_probability = 0.75
         number_of_iterations = 50000
@@ -143,7 +143,7 @@ if __name__ == '__main__':
             circles = np.random.choice(chromosome_length, how_many, replace=False)
 
             res = [p.apply_async(worker_next_pop, args=(
-                    current_population[i, :], i, mutation_probability, how_many, alfa, circles, param,
+                    children_population[i, :], i, mutation_probability, how_many, alfa, circles, param,
                     off_spring_pop,
                     off_spring_dict)) for i in range(number_of_offspring)]
             for r in res:
