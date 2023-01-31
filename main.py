@@ -12,7 +12,7 @@ def worker_eval(osobnik, index, result):
 
     for circle in osobnik:
         picture = picture2.copy()
-        cv2.circle(picture, (int(circle[0] * 240), int(circle[1] * 161)), int(circle[2] * 35),
+        cv2.circle(picture, (int(circle[0] * 161), int(circle[1] * 240)), int(circle[2] * 35),
                    (int(circle[5] * 255), int(circle[4] * 255), int(circle[3] * 255)), -1)
         # Adding alpha
         picture2 = cv2.addWeighted(picture, circle[6], picture2, 1 - circle[6], 0)
@@ -30,7 +30,7 @@ def worker_next_pop(osobnik, index, mutation_probability, how_many, alfa, circle
 
     for circle in osobnik:
         picture = picture2.copy()
-        cv2.circle(picture, (int(circle[0] * 240), int(circle[1] * 161)), int(circle[2] * 35),
+        cv2.circle(picture, (int(circle[0] * 161), int(circle[1] * 240)), int(circle[2] * 35),
                    (int(circle[5] * 255), int(circle[4] * 255), int(circle[3] * 255)), -1)
         # Adding alpha
         picture2 = cv2.addWeighted(picture, circle[6], picture2, 1 - circle[6], 0)
@@ -86,12 +86,12 @@ def Crossover(ind1, ind2):
 if __name__ == '__main__':
     set_start_method('spawn')
     with Pool() as p:
-        population_size = 10
-        chromosome_length = 350
-        number_of_offspring = 200
+        population_size = 1
+        chromosome_length = 250
+        number_of_offspring = 1
         crossover_probability = 0.05
         mutation_probability = 0.75
-        number_of_iterations = 50000
+        number_of_iterations = 50010
         alfa = 2.75
 
         manager = Manager()
@@ -119,7 +119,7 @@ if __name__ == '__main__':
         objective_values = np.zeros(population_size)
         for i in range(population_size):
             objective_values[i] = pop_dict[i]
-
+        photo_counter=0
         for t in range(number_of_iterations):
             print(t)
 
@@ -172,6 +172,9 @@ if __name__ == '__main__':
             P = create_picture(best_chromosome, 161, 240)
             Horizontal = np.concatenate((P, image1), axis=1)
             cv2.imshow('Picture', Horizontal)
+            if t % 2500 == 0:
+                cv2.imwrite(f"resultMP{photo_counter}.jpg", P)
+                photo_counter += 1
             cv2.waitKey(1)
         # return SGA_costs, best_chromosome
 
