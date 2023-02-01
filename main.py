@@ -17,7 +17,9 @@ def worker_eval(osobnik, index, result):
         # Adding alpha
         picture2 = cv2.addWeighted(picture, circle[6], picture2, 1 - circle[6], 0)
 
-    result[index] = -(ssim(picture2[:,:,0], image1[:,:,0])+ssim(picture2[:,:,1],image1[:,:,1])+ssim(picture2[:,:,2],image1[:,:,2]))/3
+    result[index] = -(ssim(picture2[:, :, 0], image1[:, :, 0]) + ssim(picture2[:, :, 1], image1[:, :, 1]) + ssim(
+        picture2[:, :, 2], image1[:, :, 2])) / 3
+
 
 def worker_next_pop(osobnik, index, mutation_probability, how_many, alfa, circles, param, off_spring, off_spring_val):
     if np.random.random() < mutation_probability:
@@ -36,8 +38,9 @@ def worker_next_pop(osobnik, index, mutation_probability, how_many, alfa, circle
         picture2 = cv2.addWeighted(picture, circle[6], picture2, 1 - circle[6], 0)
 
     # Children Evaluation
-    off_spring_val[index] = -(ssim(picture2[:, :, 0], image1[:, :, 0]) + ssim(picture2[:, :, 1], image1[:, :, 1]) + ssim(
-        picture2[:, :, 2], image1[:, :, 2])) / 3
+    off_spring_val[index] = -(
+                ssim(picture2[:, :, 0], image1[:, :, 0]) + ssim(picture2[:, :, 1], image1[:, :, 1]) + ssim(
+            picture2[:, :, 2], image1[:, :, 2])) / 3
 
     off_spring.put((osobnik, index))
     # Cross
@@ -54,16 +57,18 @@ def create_picture(chromosome, width, height):
     :param height: of picture
     :return:
     '''
-    picture2 = np.ones((height, width, 3), np.uint8) * 255 # White background
+    picture2 = np.ones((height, width, 3), np.uint8) * 255  # White background
     for circle in chromosome:
         picture = picture2.copy()
-        cv2.circle(picture, (int(circle[0]*width), int(circle[1]*height)), int(circle[2]*35), (int(circle[5]*255), int(circle[4]*255), int(circle[3]*255)), -1)
+        cv2.circle(picture, (int(circle[0] * width), int(circle[1] * height)), int(circle[2] * 35),
+                   (int(circle[5] * 255), int(circle[4] * 255), int(circle[3] * 255)), -1)
         # Adding alpha
         picture2 = cv2.addWeighted(picture, circle[6], picture2, 1 - circle[6], 0)
     return picture2
 
 
 image1 = cv2.imread("mona_lisa.png")
+
 
 def Crossover(ind1, ind2):
     y1, x1 = np.random.randint(ind1.shape)
@@ -86,16 +91,24 @@ def Crossover(ind1, ind2):
 if __name__ == '__main__':
     set_start_method('spawn')
     with Pool() as p:
-        population_size = 1
-        chromosome_length = 250
-        number_of_offspring = 1
+        # Algorithm variables
+        population_size = 10
+        chromosome_length = 1000
+        max_chromosome_length = 1000  # Max number of circles that can be added overtime
+        number_of_offspring = 10
         crossover_probability = 0.05
         mutation_probability = 0.75
         number_of_iterations = 50010
         alfa = 2.75
 
-        manager = Manager()
+        # Variables for adding new circles
+        add_circles_time = 0  # How many iterations that function didn't improve (goes back to 0 when circles are added)
+        add_circles_expected_time = 10  # How many iterations without improve after we add circles (Increase after time)
+        add_circles_epsilon = 0  # How small changes counts as not improvement (gets smaller every time we add circles)
+        add_circles_how_many = 1  # How many circles add in one go
 
+        # Multiprocessing variables
+        manager = Manager()
         pop_dict = manager.dict()
         off_spring_dict = manager.dict()
         off_spring_pop = manager.Queue()
@@ -119,7 +132,7 @@ if __name__ == '__main__':
         objective_values = np.zeros(population_size)
         for i in range(population_size):
             objective_values[i] = pop_dict[i]
-        photo_counter=0
+        photo_counter = 0
         for t in range(number_of_iterations):
             print(t)
 
@@ -137,19 +150,18 @@ if __name__ == '__main__':
             for i in range(number_of_offspring):
                 children_population[i, :, :] = current_population[parent_indices[i], :, :]
 
-            # Mutation
+
+            # Mutation and evaluation of child population
             how_many = np.random.randint(0, chromosome_length)
             param = np.random.randint(0, 6)
             circles = np.random.choice(chromosome_length, how_many, replace=False)
 
             res = [p.apply_async(worker_next_pop, args=(
-                    children_population[i, :], i, mutation_probability, how_many, alfa, circles, param,
-                    off_spring_pop,
-                    off_spring_dict)) for i in range(number_of_offspring)]
+                children_population[i, :], i, mutation_probability, how_many, alfa, circles, param,
+                off_spring_pop,
+                off_spring_dict)) for i in range(number_of_offspring)]
             for r in res:
                 r.wait()
-
-
 
             children_objective_values = np.zeros(number_of_offspring)
             while not off_spring_pop.empty():
@@ -164,8 +176,41 @@ if __name__ == '__main__':
             current_population = current_population[I[:population_size], :]
             objective_values = objective_values[I[:population_size]]
             if best_objective_value > objective_values[0]:
+                if best_objective_value-objective_values[0] <= add_circles_epsilon and chromosome_length != max_chromosome_length:
+                    add_circles_time += 1
+                elif chromosome_length != max_chromosome_length:
+                    add_circles_time = 0
                 best_objective_value = objective_values[0]
                 best_chromosome = current_population[0, :, :]
+            elif chromosome_length != max_chromosome_length:
+                add_circles_time += 1
+
+            # Adding cirles if for many iteration population is stuck in place
+            if add_circles_time >= add_circles_expected_time and chromosome_length+add_circles_how_many <= max_chromosome_length:
+                print("ADDED CIRCLE")
+                current_population = np.hstack(
+                    [current_population, np.random.sample(size=(population_size, add_circles_how_many, 7))])
+                chromosome_length += add_circles_how_many
+                print(f'Number of circles: {chromosome_length}')
+
+                # Changing add circle variables
+                add_circles_time = 0
+                #add_circles_how_many += 1
+                add_circles_epsilon *= 0.95
+                #add_circles_expected_time += 1
+            elif add_circles_time >= add_circles_expected_time and chromosome_length!=max_chromosome_length:
+                print("ADDED CIRCLE")
+                current_population = np.hstack(
+                    [current_population, np.random.sample(size=(population_size, max_chromosome_length-chromosome_length, 7))])
+                chromosome_length = max_chromosome_length
+                print(f'Number of circles: {chromosome_length}')
+
+                # Changing add circle variables
+                add_circles_time = 0
+                #add_circles_how_many += 1
+                add_circles_epsilon *= 0.95
+                #add_circles_expected_time += 1
+
             SGA_costs[t] = objective_values[0]
 
             # Visualization
@@ -177,7 +222,6 @@ if __name__ == '__main__':
                 photo_counter += 1
             cv2.waitKey(1)
         # return SGA_costs, best_chromosome
-
 
 # Narysować lub wyprintować po otrzymaniu
 # return SGA_costs, best_chromosome
