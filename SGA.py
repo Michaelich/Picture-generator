@@ -5,7 +5,7 @@ import numpy as np
 import cv2
 import math
 
-
+r=60
 def objective_function(p):
     P = create_picture(p, 161, 240)
     return compare_color(P, image1)
@@ -21,7 +21,7 @@ def create_picture(chromosome, width, height):
     picture2 = np.ones((height, width, 3), np.uint8) * 255 # White background
     for circle in chromosome:
         picture = picture2.copy()
-        cv2.circle(picture, (int(circle[0]*width), int(circle[1]*height)), int(circle[2]*35), (int(circle[5]*255), int(circle[4]*255), int(circle[3]*255)), -1)
+        cv2.circle(picture, (int(circle[0]*width), int(circle[1]*height)), int(circle[2]*r), (int(circle[5]*255), int(circle[4]*255), int(circle[3]*255)), -1)
         # Adding alpha
         picture2 = cv2.addWeighted(picture, circle[6], picture2, 1 - circle[6], 0)
     return picture2
@@ -48,7 +48,16 @@ def compare_color(img1, img2):
 
 image1 = cv2.imread("mona_lisa.png")
 
-def SGA(population_size, chromosome_length, number_of_offspring, alfa, number_of_iterations, mutation_probability):
+def SGA(population_size, chromosome_length, number_of_offspring, alfa, number_of_iterations, mutation_probability, sigma):
+    # ES
+    tau = 1/np.sqrt(2*chromosome_length)
+    tau0 = 1/np.sqrt(2*np.sqrt(chromosome_length))
+    current_population_sigmas = sigma * np.ones((population_size, chromosome_length, 7))
+    add_circles_time = 0  # How many iterations that function didn't improve (goes back to 0 when circles are added)
+    add_circles_expected_time = 100  # How many iterations without improve after we add circles (Increase after time)
+    add_circles_epsilon = 0  # How small changes counts as not improvement (gets smaller every time we add circles)
+    add_circles_how_many = 1  # How many circles add in one go
+    max_chromosome_length = 350  # Max number of circles that can be added overtime
     SGA_costs = np.zeros(number_of_iterations)
     best_chromosome = np.zeros((chromosome_length, 7))
     best_objective_value = np.inf
@@ -73,23 +82,23 @@ def SGA(population_size, chromosome_length, number_of_offspring, alfa, number_of
         parent_indices = np.random.choice(population_size, number_of_offspring, True, fitness_values).astype(np.int64)
 
         # Children Generation
+        children_population_sigmas = np.zeros((number_of_offspring, chromosome_length, 7))
         children_population = np.zeros((number_of_offspring, chromosome_length, 7), dtype=np.float64)
         for i in range(number_of_offspring):
             children_population[i,:,:] = current_population[parent_indices[i],:,:]
-
+            children_population_sigmas[i, :,:] = current_population_sigmas[parent_indices[i], :, :]
         # Crossover
         """ For now we don't do that"""
 
         # Mutation
-        how_many = np.random.randint(0, chromosome_length)
-        param = np.random.randint(0, 6)
+        how_many = np.random.randint(0, chromosome_length//2+1)
+        param = np.random.randint(0, 7)
         circles = np.random.choice(chromosome_length, how_many, replace=False)
+        children_population_sigmas = children_population_sigmas * np.exp(tau * np.random.randn(number_of_offspring, chromosome_length, 7) + tau0 * np.random.randn(number_of_offspring, 1))
+
         for i in range(number_of_offspring):
-            if np.random.random() < mutation_probability:
-                children_population[i,circles, param] += (np.random.rand(how_many)-0.5)/alfa
-                children_population[i,circles, param] = np.clip(children_population[i,circles, param], 0, 1)
-            else:
-                children_population[i,circles, param] = np.random.rand(how_many)
+            children_population[i,circles, param] += children_population_sigmas[i,circles,param] * np.random.randn(how_many)
+            children_population[i,circles, param] = np.clip(children_population[i,circles, param], 0, 1)
 
         # Children Evaluation
         children_objective_values = np.zeros(number_of_offspring)
@@ -105,6 +114,43 @@ def SGA(population_size, chromosome_length, number_of_offspring, alfa, number_of
         if best_objective_value > objective_values[0]:
             best_objective_value = objective_values[0]
             best_chromosome = current_population[0, :, :]
+        elif chromosome_length != max_chromosome_length:
+            add_circles_time += 1
+
+        if add_circles_time >= add_circles_expected_time and chromosome_length + add_circles_how_many <= max_chromosome_length:
+            print("ADDED CIRCLE")
+            current_population = np.hstack(
+                [current_population, np.random.sample(size=(population_size, add_circles_how_many, 7))])
+            for i in range(population_size):
+                objective_values[i] = objective_function(current_population[i, :, :])
+            best_objective_value=objective_values[0]
+            best_chromosome = current_population[0, :, :]
+            chromosome_length += add_circles_how_many
+            print(f'Number of circles: {chromosome_length}')
+            current_population_sigmas = np.hstack(
+                [current_population_sigmas, sigma * np.ones((population_size, add_circles_how_many, 7))])
+
+            tau = 1 / np.sqrt(2 * chromosome_length)
+            tau0 = 1 / np.sqrt(2 * np.sqrt(chromosome_length))
+            # Changing add circle variables
+            add_circles_time = 0
+            # add_circles_how_many += 1
+            add_circles_epsilon *= 0.95
+            add_circles_expected_time += 5
+        elif add_circles_time >= add_circles_expected_time and chromosome_length != max_chromosome_length:
+            print("ADDED CIRCLE")
+            current_population = np.hstack(
+                [np.random.sample(size=(population_size, add_circles_how_many, 7)), current_population])
+            chromosome_length = max_chromosome_length
+            print(f'Number of circles: {chromosome_length}')
+            tau = 1 / np.sqrt(2 * chromosome_length)
+            tau0 = 1 / np.sqrt(2 * np.sqrt(chromosome_length))
+            # Changing add circle variables
+            add_circles_time = 0
+            # add_circles_how_many += 1
+            add_circles_epsilon *= 0.95
+            # add_circles_expected_time += 1
+        # print(current_population)
         SGA_costs[t] = objective_values[0]
 
         # Visualization
@@ -115,13 +161,14 @@ def SGA(population_size, chromosome_length, number_of_offspring, alfa, number_of
     return SGA_costs, best_chromosome
 
 population_size = 1
-number_of_circles = 350
-number_of_offspring = 4
+number_of_circles = 150
+number_of_offspring = 1
+
 alfa = 2.75
 number_of_iterations = 50000
 mutation_probability = 0.75
 SA_costs, best_chromo = SGA(population_size,number_of_circles,number_of_offspring,
-                            alfa, number_of_iterations, mutation_probability)
+                            alfa, number_of_iterations, mutation_probability, 0.5)
 print(SA_costs)
 Picture = create_picture(best_chromo, 161, 240)
 Hori = np.concatenate((Picture, image1), axis=1)

@@ -8,7 +8,7 @@ from multiprocessing import set_start_method
 
 
 def worker_eval(osobnik, index, result):
-    picture2 = np.ones((240, 161, 3), np.uint8) * 255  # White background
+    picture2 = np.zeros((240, 161, 3), np.uint8)   # White background
 
     for circle in osobnik:
         picture = picture2.copy()
@@ -28,7 +28,7 @@ def worker_next_pop(osobnik, index, mutation_probability, how_many, alfa, circle
     else:
         osobnik[circles, param] = np.random.rand(how_many)
 
-    picture2 = np.ones((240, 161, 3), np.uint8) * 255  # White background
+    picture2 = np.zeros((240, 161, 3), np.uint8)   # White background
 
     for circle in osobnik:
         picture = picture2.copy()
@@ -57,7 +57,7 @@ def create_picture(chromosome, width, height):
     :param height: of picture
     :return:
     '''
-    picture2 = np.ones((height, width, 3), np.uint8) * 255  # White background
+    picture2 = np.zeros((height, width, 3), np.uint8)   # White background
     for circle in chromosome:
         picture = picture2.copy()
         cv2.circle(picture, (int(circle[0] * width), int(circle[1] * height)), int(circle[2] * 35),
@@ -92,10 +92,10 @@ if __name__ == '__main__':
     set_start_method('spawn')
     with Pool() as p:
         # Algorithm variables
-        population_size = 10
-        chromosome_length = 1000
+        population_size = 1
+        chromosome_length = 1
         max_chromosome_length = 1000  # Max number of circles that can be added overtime
-        number_of_offspring = 10
+        number_of_offspring = 1
         crossover_probability = 0.05
         mutation_probability = 0.75
         number_of_iterations = 50010
@@ -210,7 +210,9 @@ if __name__ == '__main__':
                 #add_circles_how_many += 1
                 add_circles_epsilon *= 0.95
                 #add_circles_expected_time += 1
+            #print(current_population)
 
+            print(objective_values)
             SGA_costs[t] = objective_values[0]
 
             # Visualization
