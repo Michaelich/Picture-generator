@@ -87,10 +87,10 @@ if __name__ == '__main__':
     set_start_method('spawn')
     with Pool() as p:
         # Algorithm variables
-        population_size = 10
-        chromosome_length = 10
+        population_size = 1
+        chromosome_length = 20
         max_chromosome_length = 250  # Max number of circles that can be added overtime
-        number_of_offspring = 50
+        number_of_offspring = 1
         crossover_probability = 0.05
         number_of_iterations = 50010
         ## Sigma
@@ -157,9 +157,14 @@ if __name__ == '__main__':
 
 
             # Mutation and evaluation of child population
-            how_many = np.random.randint(0, chromosome_length)
+            if np.random.random() < 0.10:
+                how_many = np.random.randint(1, chromosome_length+1)
+                circles = np.random.choice(chromosome_length-1, how_many-1, replace=False)
+                circles = np.hstack([circles, chromosome_length-1])
+            else:
+                how_many = np.random.randint(1, chromosome_length+1)
+                circles = np.random.choice(chromosome_length, how_many, replace=False)
             param = np.random.choice(7, how_many, replace=True)#np.random.randint(0, 7) # One special parameter or param = np.random.choice(7, how_many, replace=True) every circle parameter that change is random
-            circles = np.random.choice(chromosome_length, how_many, replace=False)
             for i in range(number_of_offspring):
                 children_population_sigmas[i, circles, param] = children_population_sigmas[i, circles, param] * np.exp(tau*np.random.randn(how_many) + tau0 * np.random.randn(how_many))
 
@@ -216,6 +221,11 @@ if __name__ == '__main__':
                 objective_values = np.zeros(population_size)
                 for i in range(population_size):
                     objective_values[i] = pop_dict[i]
+                I = np.argsort(objective_values)
+                current_population = current_population[I[:population_size], :]
+                objective_values = objective_values[I[:population_size]]
+                best_objective_value = objective_values[0]
+                best_chromosome = current_population[0, :, :]
 
                 tau = 1 / np.sqrt(2 * chromosome_length)
                 tau0 = 1 / np.sqrt(2 * np.sqrt(chromosome_length))
@@ -225,7 +235,7 @@ if __name__ == '__main__':
                 add_circles_time = 0
                 #add_circles_how_many += 1
                 add_circles_epsilon *= 0.95
-                add_circles_expected_time += 5
+                #add_circles_expected_time += 5
             elif add_circles_time >= add_circles_expected_time and chromosome_length!=max_chromosome_length:
                 print("ADDED CIRCLE")
                 # Adding circle and new sigma for every circle
