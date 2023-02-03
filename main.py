@@ -8,7 +8,7 @@ from multiprocessing import set_start_method
 
 
 def worker_eval(osobnik, index, result):
-    picture2 = np.zeros((240, 161, 3), np.uint8)   # White background
+    picture2 = np.ones((240, 161, 3), np.uint8) * 255  # White background
 
     for circle in osobnik:
         picture = picture2.copy()
@@ -21,15 +21,13 @@ def worker_eval(osobnik, index, result):
         picture2[:, :, 2], image1[:, :, 2])) / 3
 
 
-def worker_next_pop(osobnik, index, mutation_probability, how_many, alfa, circles, param, off_spring, off_spring_val):
-    if np.random.random() < mutation_probability:
-        osobnik[circles, param] += (np.random.rand(how_many) - 0.5) / alfa
-        osobnik[circles, param] = np.clip(osobnik[circles, param], 0, 1)
-    else:
-        osobnik[circles, param] = np.random.rand(how_many)
+def worker_next_pop(osobnik, sigmas, index, how_many, circles, param, off_spring, off_spring_val):
+    osobnik[circles, param] += sigmas[circles, param] * np.random.randn(how_many)
+    osobnik[circles, param] = np.clip(osobnik[circles, param], 0, 1)
 
-    picture2 = np.zeros((240, 161, 3), np.uint8)   # White background
+    picture2 = np.ones((240, 161, 3), np.uint8) * 255   # White background
 
+    # Creating picture to compare to original photo
     for circle in osobnik:
         picture = picture2.copy()
         cv2.circle(picture, (int(circle[0] * 161), int(circle[1] * 240)), int(circle[2] * 35),
@@ -43,9 +41,6 @@ def worker_next_pop(osobnik, index, mutation_probability, how_many, alfa, circle
             picture2[:, :, 2], image1[:, :, 2])) / 3
 
     off_spring.put((osobnik, index))
-    # Cross
-    # Mut
-    # Eval
     return
 
 
@@ -57,7 +52,7 @@ def create_picture(chromosome, width, height):
     :param height: of picture
     :return:
     '''
-    picture2 = np.zeros((height, width, 3), np.uint8)   # White background
+    picture2 = np.ones((height, width, 3), np.uint8) * 255  # White background
     for circle in chromosome:
         picture = picture2.copy()
         cv2.circle(picture, (int(circle[0] * width), int(circle[1] * height)), int(circle[2] * 35),
@@ -92,19 +87,22 @@ if __name__ == '__main__':
     set_start_method('spawn')
     with Pool() as p:
         # Algorithm variables
-        population_size = 1
-        chromosome_length = 1
-        max_chromosome_length = 1000  # Max number of circles that can be added overtime
-        number_of_offspring = 1
+        population_size = 10
+        chromosome_length = 10
+        max_chromosome_length = 250  # Max number of circles that can be added overtime
+        number_of_offspring = 50
         crossover_probability = 0.05
-        mutation_probability = 0.75
         number_of_iterations = 50010
-        alfa = 2.75
+        ## Sigma
+        starting_sigma_val = 1
+        tau = 1 / np.sqrt(2 * chromosome_length)
+        tau0 = 1 / np.sqrt(2 * np.sqrt(chromosome_length))
+        current_population_sigmas = starting_sigma_val * np.ones((population_size, chromosome_length, 7))
 
         # Variables for adding new circles
         add_circles_time = 0  # How many iterations that function didn't improve (goes back to 0 when circles are added)
-        add_circles_expected_time = 10  # How many iterations without improve after we add circles (Increase after time)
-        add_circles_epsilon = 0  # How small changes counts as not improvement (gets smaller every time we add circles)
+        add_circles_expected_time = 50  # How many iterations without improve after we add circles (Increase after time)
+        add_circles_epsilon = 0.1  # How small changes counts as not improvement (gets smaller every time we add circles)
         add_circles_how_many = 1  # How many circles add in one go
 
         # Multiprocessing variables
@@ -118,6 +116,7 @@ if __name__ == '__main__':
 
         best_chromosome = np.zeros((chromosome_length, 7))
         best_objective_value = np.inf
+
         # Generating an initial population
         current_population = np.zeros((population_size, chromosome_length, 7), dtype=np.float64)
         for i in range(population_size):
@@ -126,13 +125,17 @@ if __name__ == '__main__':
         # evaluating the objective function on the current population
         res = [p.apply_async(worker_eval, args=(current_population[i, :], i, pop_dict)) for i in range(population_size)]
 
+        # Waiting for all processes to end
         for r in res:
             r.wait()
 
+        # Getting result from evaluation
         objective_values = np.zeros(population_size)
         for i in range(population_size):
             objective_values[i] = pop_dict[i]
         photo_counter = 0
+
+        # Main loop
         for t in range(number_of_iterations):
             print(t)
 
@@ -147,19 +150,24 @@ if __name__ == '__main__':
 
             # Children Generation
             children_population = np.zeros((number_of_offspring, chromosome_length, 7), dtype=np.float64)
+            children_population_sigmas = np.zeros((number_of_offspring, chromosome_length, 7))
             for i in range(number_of_offspring):
                 children_population[i, :, :] = current_population[parent_indices[i], :, :]
+                children_population_sigmas[i, :, :] = current_population_sigmas[parent_indices[i], :, :]
 
 
             # Mutation and evaluation of child population
             how_many = np.random.randint(0, chromosome_length)
-            param = np.random.randint(0, 6)
+            param = np.random.choice(7, how_many, replace=True)#np.random.randint(0, 7) # One special parameter or param = np.random.choice(7, how_many, replace=True) every circle parameter that change is random
             circles = np.random.choice(chromosome_length, how_many, replace=False)
+            for i in range(number_of_offspring):
+                children_population_sigmas[i, circles, param] = children_population_sigmas[i, circles, param] * np.exp(tau*np.random.randn(how_many) + tau0 * np.random.randn(how_many))
 
             res = [p.apply_async(worker_next_pop, args=(
-                children_population[i, :], i, mutation_probability, how_many, alfa, circles, param,
+                children_population[i, :], children_population_sigmas[i,:], i, how_many, circles, param,
                 off_spring_pop,
                 off_spring_dict)) for i in range(number_of_offspring)]
+
             for r in res:
                 r.wait()
 
@@ -188,21 +196,47 @@ if __name__ == '__main__':
             # Adding cirles if for many iteration population is stuck in place
             if add_circles_time >= add_circles_expected_time and chromosome_length+add_circles_how_many <= max_chromosome_length:
                 print("ADDED CIRCLE")
+                # Adding circle and new sigma for every circle and calculate new tau tau0
                 current_population = np.hstack(
                     [current_population, np.random.sample(size=(population_size, add_circles_how_many, 7))])
+                current_population_sigmas = np.hstack(
+                    [current_population_sigmas,
+                     starting_sigma_val * np.ones((population_size, add_circles_how_many, 7))])
                 chromosome_length += add_circles_how_many
+
+                # evaluating the objective function on the current population
+                res = [p.apply_async(worker_eval, args=(current_population[i, :], i, pop_dict)) for i in
+                       range(population_size)]
+
+                # Waiting for all processes to end
+                for r in res:
+                    r.wait()
+
+                # Getting result from evaluation
+                objective_values = np.zeros(population_size)
+                for i in range(population_size):
+                    objective_values[i] = pop_dict[i]
+
+                tau = 1 / np.sqrt(2 * chromosome_length)
+                tau0 = 1 / np.sqrt(2 * np.sqrt(chromosome_length))
                 print(f'Number of circles: {chromosome_length}')
 
                 # Changing add circle variables
                 add_circles_time = 0
                 #add_circles_how_many += 1
                 add_circles_epsilon *= 0.95
-                #add_circles_expected_time += 1
+                add_circles_expected_time += 5
             elif add_circles_time >= add_circles_expected_time and chromosome_length!=max_chromosome_length:
                 print("ADDED CIRCLE")
+                # Adding circle and new sigma for every circle
                 current_population = np.hstack(
                     [current_population, np.random.sample(size=(population_size, max_chromosome_length-chromosome_length, 7))])
+                current_population_sigmas = np.hstack(
+                    [current_population_sigmas, starting_sigma_val * np.ones((population_size, max_chromosome_length-chromosome_length, 7))])
                 chromosome_length = max_chromosome_length
+
+                tau = 1 / np.sqrt(2 * chromosome_length)
+                tau0 = 1 / np.sqrt(2 * np.sqrt(chromosome_length))
                 print(f'Number of circles: {chromosome_length}')
 
                 # Changing add circle variables
@@ -210,9 +244,9 @@ if __name__ == '__main__':
                 #add_circles_how_many += 1
                 add_circles_epsilon *= 0.95
                 #add_circles_expected_time += 1
-            #print(current_population)
 
-            print(objective_values)
+
+            print(objective_values[0])
             SGA_costs[t] = objective_values[0]
 
             # Visualization
