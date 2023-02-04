@@ -8,11 +8,11 @@ from multiprocessing import set_start_method
 
 
 def worker_eval(osobnik, index, result):
-    picture2 = np.ones((240, 161, 3), np.uint8) * 255  # White background
+    picture2 = np.ones((height, width, 3), np.uint8) * 255  # White background
 
     for circle in osobnik:
         picture = picture2.copy()
-        cv2.circle(picture, (int(circle[0] * 161), int(circle[1] * 240)), int((circle[2] * 65)+10),
+        cv2.circle(picture, (int(circle[0] * width), int(circle[1] * height)), int((circle[2] * max_circel_radius)+10),
                    (int(circle[5] * 255), int(circle[4] * 255), int(circle[3] * 255)), -1)
         # Adding alpha
         picture2 = cv2.addWeighted(picture, circle[6], picture2, 1 - circle[6], 0)
@@ -25,12 +25,12 @@ def worker_next_pop(osobnik, sigmas, index, how_many, circles, param, off_spring
     osobnik[circles, param] += sigmas[circles, param] * np.random.randn(how_many)
     osobnik[circles, param] = np.clip(osobnik[circles, param], 0, 1)
 
-    picture2 = np.ones((240, 161, 3), np.uint8) * 255   # White background
+    picture2 = np.ones((height, width, 3), np.uint8) * 255   # White background
 
     # Creating picture to compare to original photo
     for circle in osobnik:
         picture = picture2.copy()
-        cv2.circle(picture, (int(circle[0] * 161), int(circle[1] * 240)), int((circle[2] * 65)+10),
+        cv2.circle(picture, (int(circle[0] * width), int(circle[1] * height)), int((circle[2] * max_circel_radius)+10),
                    (int(circle[5] * 255), int(circle[4] * 255), int(circle[3] * 255)), -1)
         # Adding alpha
         picture2 = cv2.addWeighted(picture, circle[6], picture2, 1 - circle[6], 0)
@@ -55,14 +55,12 @@ def create_picture(chromosome, width, height):
     picture2 = np.ones((height, width, 3), np.uint8) * 255  # White background
     for circle in chromosome:
         picture = picture2.copy()
-        cv2.circle(picture, (int(circle[0] * width), int(circle[1] * height)), int((circle[2] * 65)+10),
+        cv2.circle(picture, (int(circle[0] * width), int(circle[1] * height)), int((circle[2] * max_circel_radius)+10),
                    (int(circle[5] * 255), int(circle[4] * 255), int(circle[3] * 255)), -1)
         # Adding alpha
         picture2 = cv2.addWeighted(picture, circle[6], picture2, 1 - circle[6], 0)
     return picture2
 
-
-image1 = cv2.imread("mona_lisa.png")
 
 
 def Crossover(ind1, ind2):
@@ -83,14 +81,26 @@ def Crossover(ind1, ind2):
     return Child, Child2
 
 
+# Global variables
+
+#image1 = cv2.imread("mona_lisa.png")
+image1 = cv2.imread("mona_lisa_face.jpg")
+
+
+height, width, color = image1.shape
+
+
+max_circel_radius = 65
+
+
 if __name__ == '__main__':
     set_start_method('spawn')
     with Pool() as p:
         # Algorithm variables
-        population_size = 720
-        chromosome_length = 20
+        population_size = 24
+        chromosome_length = 5
         max_chromosome_length = 250  # Max number of circles that can be added overtime
-        number_of_offspring = 720
+        number_of_offspring = 24
         crossover_probability = 0.05
         number_of_iterations = 1000010
         ## Sigma
@@ -102,7 +112,7 @@ if __name__ == '__main__':
         # Variables for adding new circles
         add_circles_time = 0  # How many iterations that function didn't improve (goes back to 0 when circles are added)
         add_circles_expected_time = 50  # How many iterations without improve after we add circles (Increase after time)
-        add_circles_epsilon = 0.1  # How small changes counts as not improvement (gets smaller every time we add circles)
+        add_circles_epsilon = 0.01  # How small changes counts as not improvement (gets smaller every time we add circles)
         add_circles_how_many = 1  # How many circles add in one go
 
         # Multiprocessing variables
@@ -157,13 +167,13 @@ if __name__ == '__main__':
 
 
             # Mutation and evaluation of child population
-            if np.random.random() < 0.50:
-                how_many = np.random.randint(1, chromosome_length+1)
-                circles = np.random.choice(chromosome_length-1, how_many-1, replace=False)
+            if np.random.random() < 0.90:
+                how_many = np.random.randint(1, (chromosome_length*7)//2)
+                circles = np.random.choice(chromosome_length, how_many-1, replace=True)
                 circles = np.hstack([circles, chromosome_length-1])
             else:
-                how_many = np.random.randint(1, chromosome_length+1)
-                circles = np.random.choice(chromosome_length, how_many, replace=False)
+                how_many = np.random.randint(1, (chromosome_length*7)//2)
+                circles = np.random.choice(chromosome_length, how_many, replace=True)
             param = np.random.choice(7, how_many, replace=True)#np.random.randint(0, 7) # One special parameter or param = np.random.choice(7, how_many, replace=True) every circle parameter that change is random
             for i in range(number_of_offspring):
                 children_population_sigmas[i, circles, param] = children_population_sigmas[i, circles, param] * np.exp(tau*np.random.randn(how_many) + tau0 * np.random.randn(how_many))
@@ -235,7 +245,7 @@ if __name__ == '__main__':
                 add_circles_time = 0
                 #add_circles_how_many += 1
                 add_circles_epsilon *= 0.95
-                add_circles_expected_time += 3
+                add_circles_expected_time += 2
             elif add_circles_time >= add_circles_expected_time and chromosome_length!=max_chromosome_length:
                 print("ADDED CIRCLE")
                 # Adding circle and new sigma for every circle
@@ -260,9 +270,9 @@ if __name__ == '__main__':
             SGA_costs[t] = objective_values[0]
 
             # Visualization
-            P = create_picture(best_chromosome, 161, 240)
-            worst_pic = create_picture(current_population[-1, :, :], 161,240)
-            avg_pic = create_picture(current_population[population_size//2, :, :], 161, 240)
+            P = create_picture(best_chromosome, width, height)
+            worst_pic = create_picture(current_population[-1, :, :], width,height)
+            avg_pic = create_picture(current_population[population_size//2, :, :], width, height)
 
             Horizontal = np.concatenate((P, avg_pic, worst_pic, image1), axis=1)
             cv2.imshow('Picture', Horizontal)
